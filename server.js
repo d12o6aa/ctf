@@ -21,7 +21,7 @@ async function callArabGuardAPI(userInput, systemPrompt) {
     console.log("📡 Calling ArabGuard Space...");
     
     // ملاحظة: اللينك ده هو الـ API Endpoint الصحيح للـ Space بتاعك
-    const HF_API = "https://d12o6aa-arabguard-analyzer.hf.space/call/universal_api";
+    const HF_API = "https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api";
 
     const response = await fetch(HF_API, {
         method: "POST",
