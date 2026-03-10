@@ -17,31 +17,26 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "dist")));
 
 async function callArabGuardAPI(userInput, systemPrompt) {
-    console.log("📡 Sending to HF Space...");
-    
-    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api", {
-        method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        },
-        body: JSON.stringify({
-            data: [
-                userInput, 
-                systemPrompt || "أنت مساعد ذكي."
-            ]
-        })
-    });
+  console.log("📡 Calling ArabGuard via Direct API...");
+  
+  const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      data: [userInput, systemPrompt || "أنت مساعد ذكي."]
+    })
+  });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error("❌ Hugging Face Error Detail:", errorText); 
-        throw new Error(`ArabGuard API Error: ${response.status}`);
-    }
+  if (!response.ok) {
+    const err = await response.text();
+    console.error("❌ Hugging Face Error:", err);
+    throw new Error("ArabGuard Space is busy or offline");
+  }
 
-    const result = await response.json();
-    console.log("✅ HF Response received");
-    return result.data; 
+  const result = await response.json();
+  // الـ Result في الـ API المباشر بيكون جواه array اسمه data
+  // [0] الرد، [1] التريس، [2] الليبل (BLOCKED/SAFE)
+  return result.data; 
 }
 
 app.post("/api/game-turn", async (req, res) => {
