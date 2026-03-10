@@ -16,36 +16,33 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // دالة الاتصال بـ ArabGuard (استخدام الـ API المباشر لـ Hugging Face)
 async function callArabGuardAPI(userInput, systemPrompt) {
-    console.log("📡 Calling ArabGuard Space via Direct Predict API...");
+    console.log("📡 Calling ArabGuard via API...");
     
-    // هذا هو الرابط البرمجي المباشر للـ Space الخاص بكِ
-    const HF_API_URL = "https://d12o6aa-arabguard-analyzer.hf.space/api/predict";
-
-    const response = await fetch(HF_API_URL, {
+    // العنوان ده هو الـ Direct Endpoint لـ Gradio 4
+    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/api/predict/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
         body: JSON.stringify({
             data: [
                 userInput, 
                 systemPrompt || "أنت مساعد ذكي."
-            ]
+            ],
+            fn_index: 0, // ده مهم جداً عشان يحدد الدالة
+            session_hash: Math.random().toString(36).substring(2) // هيروكو بيحب يحس إن فيه Session
         })
     });
 
-    if (!response.ok) {
-        const errorDetail = await response.text();
-        console.error("❌ Hugging Face Error:", errorDetail);
-        throw new Error("ArabGuard Space Error");
-    }
-
     const result = await response.json();
-    console.log("✅ ArabGuard response received!");
-    
-    // النتيجة ترجع في مصفوفة اسمها data
-    // result.data[0] -> الرد (Chat Response)
-    // result.data[1] -> التريس (Trace JSON)
-    // result.data[2] -> الحالة (Label: SAFE/BLOCKED)
-    return result.data; 
+    if (result.data) {
+        console.log("✅ Received Response from ArabGuard");
+        return result.data;
+    } else {
+        console.error("❌ Unexpected format:", result);
+        throw new Error("Invalid response from ArabGuard");
+    }
 }
 
 app.post("/api/game-turn", async (req, res) => {
