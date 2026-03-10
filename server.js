@@ -17,26 +17,32 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "dist")));
 
 async function callArabGuardAPI(userInput, systemPrompt) {
-  console.log("📡 Calling ArabGuard via Direct API...");
+  console.log("📡 Calling ArabGuard via Standard API...");
   
-  const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api", {
+  // غيرنا المسار لـ /api/predict لأنه الأضمن في Gradio 4+
+  const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/api/predict", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      data: [userInput, systemPrompt || "أنت مساعد ذكي."]
+      data: [userInput, systemPrompt || "أنت مساعد ذكي."],
+      fn_index: 0 // ده بيقوله نادِ أول دالة (universal_api) عندك
     })
   });
 
   if (!response.ok) {
     const err = await response.text();
     console.error("❌ Hugging Face Error:", err);
-    throw new Error("ArabGuard Space is busy or offline");
+    throw new Error("ArabGuard Space Error");
   }
 
   const result = await response.json();
-  // الـ Result في الـ API المباشر بيكون جواه array اسمه data
-  // [0] الرد، [1] التريس، [2] الليبل (BLOCKED/SAFE)
-  return result.data; 
+  // لو الرد فيه data، يبقى تمام
+  if (result.data) {
+      return result.data; 
+  } else {
+      console.error("❌ Unexpected HF Response:", result);
+      throw new Error("Invalid response format from ArabGuard");
+  }
 }
 
 app.post("/api/game-turn", async (req, res) => {
