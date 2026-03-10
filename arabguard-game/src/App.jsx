@@ -18,7 +18,7 @@ const AVATARS = {
 
 // ─── Backend API base (your proxy server) ────────────
 // This proxy calls d12o6aa/ArabGuard-Analyzer internally
-const API = "https://challenge.arabguard.tech";
+const API = "http://challenge.arabguard.tech";
 
 // ─── Levels ──────────────────────────────────────────
 const LEVELS = [
