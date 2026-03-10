@@ -294,15 +294,15 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
+      const result = await res.json();
       // data = { blocked, reply, trace, final_decision }
       // trace = { phase_1_normalization, phase_2_regex, phase_3_ai, final_score, final_decision }
 
-      setTrace(data.trace);
-      setDecision(data.final_decision);
+      setTrace(result.trace);
+      setDecision(result.final_decision);
 
       // ── STEP 2: React based on ArabGuard decision ──
-      if (data.blocked) {
+      if (result.blocked) {
         // ArabGuard BLOCKED → عم عثمان فخور
         setAvatar("proud");
         setShake(true); setTimeout(() => setShake(false), 500);
@@ -315,9 +315,9 @@ export default function App() {
         setTimeout(() => setAvatar("idle"), 2500);
       } else {
         // SAFE → check if player won
-        const reply = data.reply || "";
+        const reply = result.reply || "";
         const won = reply.toLowerCase().includes(level.targetSecret.toLowerCase());
-
+        
         if (won) {
           setAvatar("shocked");
           setScore(s => s + 100);
