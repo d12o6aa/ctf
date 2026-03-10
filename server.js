@@ -1,25 +1,39 @@
 import express from "express";
 import cors from "cors";
-import { Client } from "@gradio/client";
+import path from "path";
+import { fileURLToPath } from "url";
+import * as gradio from "@gradio/client"; // التعديل الجوهري هنا
 import Groq from "groq-sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT || 3001;
+
+// هيروكو هو اللي بيحدد البورت، لو ملقاش بورت بيستخدم 5000
+const PORT = process.env.PORT || 5000;
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+
+// تشغيل ملفات الـ Frontend من فولدر dist اللي جنبه
+app.use(express.static(path.join(__dirname, "dist")));
 
 let agClient = null;
 
 async function getAG() {
   if (!agClient) {
     console.log("⏳ Connecting to d12o6aa/ArabGuard-Analyzer...");
-    agClient = await Client.connect("d12o6aa/ArabGuard-Analyzer");
-    console.log("✅ ArabGuard connected");
+    try {
+      // استخدام gradio.Client بدلاً من الاستدعاء المباشر
+      agClient = await gradio.Client.connect("d12o6aa/ArabGuard-Analyzer");
+      console.log("✅ ArabGuard connected");
+    } catch (error) {
+      console.error("❌ Failed to connect to ArabGuard:", error.message);
+      throw error;
+    }
   }
   return agClient;
 }
@@ -43,19 +57,24 @@ app.post("/api/game-turn", async (req, res) => {
 
     return res.json({ 
       blocked, 
-      reply: blocked ? "يا ناصح! ArabGuard لقطك. 😂" : agChatResp, 
+      reply: blocked ? "يا ناصح! ArabGuard لقطك وأنا لسه بقول يا هادي. 😂" : agChatResp, 
       trace, 
       final_decision 
     });
 
   } catch (err) {
-    console.error("Error:", err.message);
-    agClient = null;
-    res.status(500).json({ error: err.message });
+    console.error("Error Detail:", err.message);
+    agClient = null; // إعادة المحاولة في الريكويست الجاي لو حصل فشل
+    res.status(500).json({ error: "خطأ في الاتصال بالسيرفر الأمني." });
   }
 });
 
+// توجيه أي مسار غير معروف لصفحة اللعبة (عشان الـ Refresh يشتغل)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
+
 app.listen(PORT, () => {
-  console.log(`🛡️  Server Running on http://localhost:${PORT}`);
-  getAG().catch(console.error);
+  console.log(`🛡️  Server Running on port: ${PORT}`);
+  getAG().catch(err => console.error("Initial connection error:", err.message));
 });
