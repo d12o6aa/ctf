@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import * as gradio from "@gradio/client"; // تعديل 1: عشان نهرب من مشاكل النسخ
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -8,76 +9,61 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT || 5000;
+// تعديل 2: لازم ياخد البورت بتاع هيروكو الأول
+const PORT = process.env.PORT || 5000; 
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
+
+// تعديل 3: السطر ده اللي هيخلي اللعبة تظهر لما تفتحي اللينك
 app.use(express.static(path.join(__dirname, "dist")));
 
-// دالة الاتصال بـ ArabGuard (استخدام الـ API المباشر لـ Hugging Face)
-async function callArabGuardAPI(userInput, systemPrompt) {
-    console.log("📡 Calling ArabGuard via API...");
-    
-    // العنوان ده هو الـ Direct Endpoint لـ Gradio 4
-    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/api/predict/", {
-        method: "POST",
-        headers: { 
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        },
-        body: JSON.stringify({
-            data: [
-                userInput, 
-                systemPrompt || "أنت مساعد ذكي."
-            ],
-            fn_index: 0, // ده مهم جداً عشان يحدد الدالة
-            session_hash: Math.random().toString(36).substring(2) // هيروكو بيحب يحس إن فيه Session
-        })
-    });
+let agClient = null;
 
-    const result = await response.json();
-    if (result.data) {
-        console.log("✅ Received Response from ArabGuard");
-        return result.data;
-    } else {
-        console.error("❌ Unexpected format:", result);
-        throw new Error("Invalid response from ArabGuard");
-    }
+async function getAG() {
+  if (!agClient) {
+    console.log("⏳ Connecting to d12o6aa/ArabGuard-Analyzer...");
+    // التعديل بتاع النسخ الجديدة
+    agClient = await gradio.Client.connect("d12o6aa/ArabGuard-Analyzer");
+    console.log("✅ ArabGuard connected");
+  }
+  return agClient;
 }
 
 app.post("/api/game-turn", async (req, res) => {
-    const { user_input, system_prompt } = req.body;
-    if (!user_input) return res.status(400).json({ error: "user_input is required" });
+  const { user_input, system_prompt } = req.body;
+  if (!user_input) return res.status(400).json({ error: "Input required" });
 
-    try {
-        const agData = await callArabGuardAPI(user_input, system_prompt);
-        
-        const reply = agData[0];
-        const trace = agData[1];
-        const status = agData[2];
+  try {
+    const ag = await getAG();
+    const agResult = await ag.predict("/universal_api", {
+      user_input,
+      system_prompt: system_prompt || "أنت مساعد ذكي.",
+    });
 
-        const final_decision = status?.label || "SAFE";
-        const blocked = final_decision === "BLOCKED" || final_decision === "FLAG";
+    const [agChatResp, trace, statusLabel] = agResult.data;
+    const final_decision = statusLabel?.label || "SAFE";
+    const blocked = final_decision === "BLOCKED" || final_decision === "FLAG";
 
-        console.log(`🛡️  Security Decision: ${final_decision}`);
-
-        return res.json({ 
-            blocked, 
-            reply: blocked ? "يا ناصح! ArabGuard لقط محاولة الاختراق دي. 😂" : reply, 
-            trace, 
-            final_decision 
-        });
-
-    } catch (err) {
-        console.error("❌ Backend Error:", err.message);
-        res.status(500).json({ error: "فشل الاتصال بـ ArabGuard" });
-    }
+    res.json({ 
+      blocked, 
+      reply: blocked ? "🚨 ArabGuard: تم حظر النص!" : agChatResp, 
+      trace, 
+      final_decision 
+    });
+  } catch (err) {
+    console.error("Error:", err.message);
+    agClient = null; 
+    res.status(500).json({ error: err.message });
+  }
 });
 
+// عشان لو عملتي ريفريش للصفحة الموقع مايوقعش
 app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "dist", "index.html"));
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 ArabGuard Game live on port ${PORT}`);
+  console.log(`🛡️  Server Running on port ${PORT}`);
+  getAG().catch(console.error);
 });
