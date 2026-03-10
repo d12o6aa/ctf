@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import Groq from "groq-sdk";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,7 +9,6 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 5000;
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
@@ -18,70 +16,63 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // دالة الاتصال بـ ArabGuard (استخدام الـ API المباشر لـ Hugging Face)
 async function callArabGuardAPI(userInput, systemPrompt) {
-    console.log("📡 Calling ArabGuard Space...");
+    console.log("📡 Calling ArabGuard Space via Direct Predict API...");
     
-    // ملاحظة: اللينك ده هو الـ API Endpoint الصحيح للـ Space بتاعك
-    const HF_API = "https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api";
+    // هذا هو الرابط البرمجي المباشر للـ Space الخاص بكِ
+    const HF_API_URL = "https://d12o6aa-arabguard-analyzer.hf.space/api/predict";
 
-    const response = await fetch(HF_API, {
+    const response = await fetch(HF_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-            data: [userInput, systemPrompt || "أنت مساعد ذكي."]
+            data: [
+                userInput, 
+                systemPrompt || "أنت مساعد ذكي."
+            ]
         })
     });
 
     if (!response.ok) {
         const errorDetail = await response.text();
-        console.error("❌ HF Error:", errorDetail);
-        throw new Error("ArabGuard Space Refused Connection");
+        console.error("❌ Hugging Face Error:", errorDetail);
+        throw new Error("ArabGuard Space Error");
     }
 
-    const { event_id } = await response.json();
-    console.log(`✅ Event ID created: ${event_id}`);
-
-    // الخطوة الثانية: الحصول على النتيجة باستخدام الـ event_id
-    const resultResponse = await fetch(`${HF_API}/${event_id}`);
-    const resultText = await resultResponse.text();
-
-    // فك شفرة الـ Stream اللي راجع من Hugging Face
-    const lines = resultText.split('\n');
-    for (let line of lines) {
-        if (line.startsWith('data: ')) {
-            const jsonStr = line.replace('data: ', '');
-            try {
-                const data = JSON.parse(jsonStr);
-                return data; // [agChatResp, trace, statusLabel]
-            } catch (e) {
-                console.error("❌ Parsing Error:", e.message);
-            }
-        }
-    }
-    throw new Error("Could not find data in HF response");
+    const result = await response.json();
+    console.log("✅ ArabGuard response received!");
+    
+    // النتيجة ترجع في مصفوفة اسمها data
+    // result.data[0] -> الرد (Chat Response)
+    // result.data[1] -> التريس (Trace JSON)
+    // result.data[2] -> الحالة (Label: SAFE/BLOCKED)
+    return result.data; 
 }
 
 app.post("/api/game-turn", async (req, res) => {
     const { user_input, system_prompt } = req.body;
-    if (!user_input) return res.status(400).json({ error: "Input required" });
+    if (!user_input) return res.status(400).json({ error: "user_input is required" });
 
     try {
         const agData = await callArabGuardAPI(user_input, system_prompt);
         
-        const [reply, trace, status] = agData;
+        const reply = agData[0];
+        const trace = agData[1];
+        const status = agData[2];
+
         const final_decision = status?.label || "SAFE";
         const blocked = final_decision === "BLOCKED" || final_decision === "FLAG";
 
-        console.log(`🛡️  Decision for "${user_input.substring(0, 20)}": ${final_decision}`);
+        console.log(`🛡️  Security Decision: ${final_decision}`);
 
-        res.json({ 
+        return res.json({ 
             blocked, 
-            reply: blocked ? "🚨 ArabGuard: محاولة اختراق! تم حظر النص." : reply, 
+            reply: blocked ? "يا ناصح! ArabGuard لقط محاولة الاختراق دي. 😂" : reply, 
             trace, 
             final_decision 
         });
 
     } catch (err) {
-        console.error("❌ Server Error:", err.message);
+        console.error("❌ Backend Error:", err.message);
         res.status(500).json({ error: "فشل الاتصال بـ ArabGuard" });
     }
 });
