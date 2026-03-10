@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
-import * as gradio from "@gradio/client"; // التعديل الجوهري هنا
+import { client } from "@gradio/client"; // التعديل هنا: استخدام client بحرف صغير
 import Groq from "groq-sdk";
 import dotenv from "dotenv";
 
@@ -10,28 +10,24 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-
-// هيروكو هو اللي بيحدد البورت، لو ملقاش بورت بيستخدم 5000
 const PORT = process.env.PORT || 5000;
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 app.use(cors({ origin: "*" }));
 app.use(express.json());
-
-// تشغيل ملفات الـ Frontend من فولدر dist اللي جنبه
 app.use(express.static(path.join(__dirname, "dist")));
 
 let agClient = null;
 
 async function getAG() {
   if (!agClient) {
-    console.log("⏳ Connecting to d12o6aa/ArabGuard-Analyzer...");
+    console.log("⏳ Connecting to ArabGuard Space...");
     try {
-      // استخدام gradio.Client بدلاً من الاستدعاء المباشر
-      agClient = await gradio.Client.connect("d12o6aa/ArabGuard-Analyzer");
-      console.log("✅ ArabGuard connected");
+      // التعديل هنا: استخدام client.connect مباشرة
+      agClient = await client.connect("d12o6aa/ArabGuard-Analyzer"); 
+      console.log("✅ ArabGuard connected successfully");
     } catch (error) {
-      console.error("❌ Failed to connect to ArabGuard:", error.message);
+      console.error("❌ Connection failed:", error.message);
       throw error;
     }
   }
