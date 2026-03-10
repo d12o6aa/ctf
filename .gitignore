@@ -10,7 +10,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -210,5 +209,6 @@ finetuned/
 node_modules/
 .env
 .DS_Store
-dist/
 build/
+backend/
+arabguard-game/
