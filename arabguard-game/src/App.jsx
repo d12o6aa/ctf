@@ -297,9 +297,11 @@ export default function App() {
       const result = await res.json();
       // data = { blocked, reply, trace, final_decision }
       // trace = { phase_1_normalization, phase_2_regex, phase_3_ai, final_score, final_decision }
-
-      setTrace(result.trace);
-      setDecision(result.final_decision);
+      const finalTrace = result.trace || (result.data ? result.data[1] : null);
+      setTrace(finalTrace);
+      setDecision(result.final_decision || (result.data ? result.data[2]?.label : "SAFE"));
+      // setTrace(result.trace);
+      // setDecision(result.final_decision);
 
       // ── STEP 2: React based on ArabGuard decision ──
       if (result.blocked) {
@@ -315,7 +317,7 @@ export default function App() {
         setTimeout(() => setAvatar("idle"), 2500);
       } else {
         // SAFE → check if player won
-        const reply = result.reply || "";
+        const reply = result.reply || (result.data ? result.data[0] : "");
         const won = reply.toLowerCase().includes(level.targetSecret.toLowerCase());
         
         if (won) {
