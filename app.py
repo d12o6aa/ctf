@@ -48,11 +48,10 @@ async def game_turn(request: Request):
         blocked = final_decision in ["BLOCKED", "FLAG"]
         print(f"ArabGuard Decision: {final_decision} for input: {user_input}")
         return {
-            "data": [
-                "🚨 ArabGuard: محاولة اختراق!" if blocked else reply, 
-                trace,                                           
-                status                                           
-            ]
+            "reply": "🚨 ArabGuard: محاولة اختراق!" if blocked else reply,
+            "trace": trace,
+            "final_decision": final_decision,
+            "blocked": blocked
         }
     except Exception as e:
         return {"error": str(e)}, 500
