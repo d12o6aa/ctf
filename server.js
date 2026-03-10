@@ -16,32 +16,32 @@ app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "dist")));
 
-// دالة الاتصال بـ ArabGuard عن طريق الـ API المباشر
 async function callArabGuardAPI(userInput, systemPrompt) {
-    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/api/predict", {
+    console.log("📡 Sending to HF Space...");
+    
+    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/run/universal_api", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
         body: JSON.stringify({
-            data: [userInput, systemPrompt || "أنت مساعد ذكي."]
+            data: [
+                userInput, 
+                systemPrompt || "أنت مساعد ذكي."
+            ]
         })
     });
 
-    if (!response.ok) throw new Error("ArabGuard API Error");
-    
-    const { event_id } = await response.json();
-    
-    // هنجيب النتيجة باستخدام الـ event_id
-    const resultResponse = await fetch(`https://d12o6aa-arabguard-analyzer.hf.space/api/predict/${event_id}`);
-    const resultText = await resultResponse.text();
-    
-    // تحويل النتيجة من Format الـ Server-Sent Events لـ JSON
-    const lines = resultText.split('\n');
-    for (let line of lines) {
-        if (line.startsWith('data:')) {
-            const data = JSON.parse(line.slice(5));
-            return data; // ده اللي فيه [reply, trace, label]
-        }
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Hugging Face Error Detail:", errorText); 
+        throw new Error(`ArabGuard API Error: ${response.status}`);
     }
+
+    const result = await response.json();
+    console.log("✅ HF Response received");
+    return result.data; 
 }
 
 app.post("/api/game-turn", async (req, res) => {
