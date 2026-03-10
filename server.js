@@ -18,7 +18,7 @@ app.use(express.static(path.join(__dirname, "dist")));
 
 // دالة الاتصال بـ ArabGuard عن طريق الـ API المباشر
 async function callArabGuardAPI(userInput, systemPrompt) {
-    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/call/universal_api", {
+    const response = await fetch("https://d12o6aa-arabguard-analyzer.hf.space/api/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -31,7 +31,7 @@ async function callArabGuardAPI(userInput, systemPrompt) {
     const { event_id } = await response.json();
     
     // هنجيب النتيجة باستخدام الـ event_id
-    const resultResponse = await fetch(`https://d12o6aa-arabguard-analyzer.hf.space/call/universal_api/${event_id}`);
+    const resultResponse = await fetch(`https://d12o6aa-arabguard-analyzer.hf.space/api/predict/${event_id}`);
     const resultText = await resultResponse.text();
     
     // تحويل النتيجة من Format الـ Server-Sent Events لـ JSON
