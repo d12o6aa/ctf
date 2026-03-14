@@ -222,6 +222,9 @@ def health():
         "log_exists":          THREAT_LOG_PATH.exists(),
     }
 
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to ArabGuard Game API", "docs": "/docs"}
 
 if __name__ == "__main__":
     import uvicorn
