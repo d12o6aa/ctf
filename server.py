@@ -12,6 +12,8 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +48,10 @@ def get_ag():
     return _ag_client
 
 
+
+if os.path.exists("dist"):
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+    
 # ── Log writer ────────────────────────────────────────
 def append_to_threat_log(raw_input: str, trace: dict, final_decision: str, system_prompt: str = ""):
     """
@@ -223,8 +229,12 @@ def health():
     }
 
 @app.get("/")
-def read_root():
-    return {"message": "Welcome to ArabGuard Game API", "docs": "/docs"}
+async def read_index():
+    index_path = os.path.join("dist", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    else:
+        return {"message": "Frontend build not found. Did you run 'npm run build'?"}
 
 if __name__ == "__main__":
     import uvicorn
