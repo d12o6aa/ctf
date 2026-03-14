@@ -212,3 +212,5 @@ node_modules/
 build/
 backend/
 arabguard-game/
+src/
+public/

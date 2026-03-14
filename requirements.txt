@@ -1,4 +1,6 @@
 fastapi
-uvicorn
-requests
+uvicorn[standard]
+gradio-client
+groq
+httpx
 python-dotenv
