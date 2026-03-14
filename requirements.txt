@@ -4,3 +4,6 @@ gradio-client
 groq
 httpx
 python-dotenv
+sqlalchemy
+psycopg2-binary
+gunicorn

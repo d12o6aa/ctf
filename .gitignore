@@ -215,3 +215,7 @@ arabguard-game/
 src/
 public/
 data/
+*.db
+*.log
+*.sqlite3
+*.pyc
