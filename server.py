@@ -31,8 +31,8 @@ app.add_middleware(
 )
 
 # ── Log file path ─────────────────────────────────────
-THREAT_LOG_PATH = Path("/home/doaa/test_demo/arabguard/arabguard-backend/data/threat_log.jsonl")
-
+BASE_DIR = Path(__file__).resolve().parent
+THREAT_LOG_PATH = BASE_DIR / "data" / "threat_log.jsonl"
 # ── Clients ───────────────────────────────────────────
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 _ag_client = None
