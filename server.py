@@ -168,6 +168,7 @@ async def get_leaderboard(db: Session = Depends(get_db)):
             ThreatLog.username,
             func.max(ThreatLog.score).label("best_score"),
             func.max(ThreatLog.level_id).label("max_level"),
+            func.count(ThreatLog.id).label("total_tries"),
         )
         .group_by(ThreatLog.username)
         .order_by(desc("best_score"))
@@ -175,7 +176,12 @@ async def get_leaderboard(db: Session = Depends(get_db)):
         .all()
     )
     return [
-        {"username": p.username, "score": p.best_score, "level_id": p.max_level}
+        {
+            "username": p.username,
+            "score": p.best_score,
+            "level_id": p.max_level,
+            "tries": p.total_tries,
+        }
         for p in best
     ]
 
