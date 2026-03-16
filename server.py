@@ -325,8 +325,8 @@ def health(db: Session = Depends(get_db)):
 # دالة ذكية لتجربة الموديلات بالترتيب
 def get_llm_response(system_prompt, user_input):
     models_to_try = [
-        "qwen-2.5-72b",          # الأذكى (المحاولة الأولى)
-        "mixtral-8x7b-32768",   # السريع والذكي (المحاولة الثانية)
+        "qwen-3-32b",          # الأذكى (المحاولة الأولى)
+        "llama-3.3-70b",   # السريع والذكي (المحاولة الثانية)
         "llama-3.1-8b-instant"  # المنقذ (المحاولة الأخيرة)
     ]
     
