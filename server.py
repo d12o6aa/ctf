@@ -138,7 +138,7 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
         # 3. رد Groq في حالة الأمان
         if req.use_groq:
             completion = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 messages=[
                     {"role": "system", "content": req.system_prompt},
                     {"role": "user", "content": req.user_input},
