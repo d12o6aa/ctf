@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from sqlalchemy.exc import IntegrityError
+
 from database import get_db, ThreatLog, CompletedLevel, datetime, timezone, uuid
 from game_logic import LEVELS_TEMPLATES, get_level_data, get_llm_response
 from config import get_ag_client
@@ -15,17 +16,13 @@ from config import get_ag_client
 app = FastAPI(title="ArabGuard Game API")
 
 
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # رابط الفرونت إند بتاعك
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],  # السماح بجميع أنواع الطلبات (GET, POST, etc)
-    allow_headers=["*"],  # السماح بجميع الـ Headers
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
 
 if os.path.exists("dist"):
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
