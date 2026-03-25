@@ -181,6 +181,15 @@ async def get_stats(db: Session = Depends(get_db)):
         "successful_hacks": successful_hacks
     }
 
+@app.get("/api/user-progress/{username}")
+@app.get("/api/user-progress/") 
+async def get_user_progress(username: str = "Anonymous", db: Session = Depends(get_db)):
+    try:
+        completed = db.query(CompletedLevel.level_id).filter(CompletedLevel.username == username).all()
+        return {"completed_levels": [c.level_id for c in completed]}
+    except Exception as e:
+        print(f"Error fetching progress: {e}")
+        return {"completed_levels": []}
 
 @app.get("/")
 async def read_index():
