@@ -169,11 +169,11 @@ def get_llm_response(system_prompt, user_input):
             completion = groq_client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
-                max_tokens=150,
-                temperature=0.7,      # قللي دي لـ 0.7 عشان يهدى شوية
-                top_p=0.9,            # خلي الردود مركزة أكتر
-                frequency_penalty=0.3, # السطر ده هيمنعه من تكرار الجمل زي "إحنا فينا"
-                presence_penalty=0.0
+                temperature=0.6,          # قللي دي لـ 0.6 عشان يلتزم بالمنطق
+                top_p=0.85,               # بيخلي الردود أوضح
+                frequency_penalty=0.8,    # ارفعي دي لـ 0.8 عشان يمنع التكرار نهائياً (زي "في.. في..")
+                presence_penalty=0.3,     # بيشجعه يتكلم في موضوعات جديدة بدل الـ Loop
+                max_tokens=150
             )
             return completion.choices[0].message.content
         except: continue
