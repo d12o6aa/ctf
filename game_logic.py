@@ -163,18 +163,34 @@ def get_level_data(level_id):
     }
 
 def get_llm_response(system_prompt, user_input):
-    models = ["qwen-3-32b", "llama-3.3-70b", "llama-3.1-8b-instant"]
-    for model_name in models:
+    models_to_try = [
+        "llama-3.3-70b-versatile",   # الموديل الأساسي (الأذكى)
+        "llama-3.1-70b-versatile",   # البديل الأول (أكثر استقراراً)
+        "llama3-70b-8192",           # البديل الثاني
+        "llama3-8b-8192"             # البديل الأخير (سريع وخفيف)
+    ]
+    
+    last_error = ""
+
+    for model_name in models_to_try:
         try:
             completion = groq_client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_input}],
-                temperature=0.6,          # قللي دي لـ 0.6 عشان يلتزم بالمنطق
-                top_p=0.85,               # بيخلي الردود أوضح
-                frequency_penalty=0.8,    # ارفعي دي لـ 0.8 عشان يمنع التكرار نهائياً (زي "في.. في..")
-                presence_penalty=0.3,     # بيشجعه يتكلم في موضوعات جديدة بدل الـ Loop
-                max_tokens=150
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_input},
+                ],
+                max_tokens=100,         # ردود قصيرة لتقليل استهلاك التوكنز والهلوسة
+                temperature=0.6,        # متوازن بين الإبداع والمنطق
+                top_p=0.9,
+                frequency_penalty=1.0,  # لمنع التكرار (علاج الهلوسة)
+                presence_penalty=0.5    # لمنع الدوران في دوائر مغلقة
             )
             return completion.choices[0].message.content
-        except: continue
-    return "السيرفر عليه زحمة، جرب كمان شوية!"
+        except Exception as e:
+            last_error = str(e)
+            print(f"Model {model_name} failed: {last_error}")
+            continue # جرب الموديل اللي بعده في القائمة
+            
+    # لو كل الموديلات فشلت (مثلاً التوكنز خلصت في الكل)
+    return "يا بيه السيرفر عليه ضغط رهيب، جرب كمان دقيقة واحدة!"
