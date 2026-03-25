@@ -172,7 +172,7 @@ def get_llm_response(system_prompt, user_input):
                 max_tokens=150,
                 temperature=0.7,      # قللي دي لـ 0.7 عشان يهدى شوية
                 top_p=0.9,            # خلي الردود مركزة أكتر
-                frequency_penalty=0.5, # السطر ده هيمنعه من تكرار الجمل زي "إحنا فينا"
+                frequency_penalty=0.3, # السطر ده هيمنعه من تكرار الجمل زي "إحنا فينا"
                 presence_penalty=0.0
             )
             return completion.choices[0].message.content
