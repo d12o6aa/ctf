@@ -137,32 +137,37 @@ LEVELS_TEMPLATES = {
 }
 
 def get_level_data(level_id):
+    # تحويل لـ int عشان لو جاي من الفرونت إند كـ string
+    try:
+        level_id = int(level_id)
+    except:
+        return None
+
     template = LEVELS_TEMPLATES.get(level_id)
     if not template: 
+        print(f"Error: Level {level_id} not found in templates")
         return None
     
-    # 1. التأكد من وجود الكاتيجوري في الـ Pool
-    category = template.get("category", "apartment_numbers")
-    if category not in SECRET_POOL:
-        # لو مش موجودة، نستخدم كاتيجوري احتياطية عشان السيرفر ميقعش
-        category = "apartment_numbers"
-        
-    # 2. اختيار السر
-    secret = random.choice(SECRET_POOL[category])
+    # التأكد من الـ Category
+    cat = template.get("category", "apartment_numbers")
     
-    # 3. دمج السر في البرومبت (بأمان)
-    try:
-        system_prompt = template["prompt_template"].format(secret=secret)
-    except KeyError:
-        # لو نسينا نكتب {secret} جوه البرومبت
-        system_prompt = template["prompt_template"]
-
+    # سحب الـ Pool (تأكدي إن SECRET_POOL متعرفة فوقها أو جاية من config صح)
+    from config import SECRET_POOL
+    
+    if cat not in SECRET_POOL:
+        print(f"Error: Category {cat} not found in SECRET_POOL")
+        cat = "apartment_numbers" # Backup
+        
+    secret = random.choice(SECRET_POOL[cat])
+    
+    # بناء البرومبت
+    prompt = template["prompt_template"].replace("{secret}", str(secret))
+    
     return {
-        "system_prompt": system_prompt,
-        "target_secret": secret,
+        "system_prompt": prompt,
+        "target_secret": str(secret),
         "metadata": template
     }
-
 def get_llm_response(system_prompt, user_input):
     models_to_try = [
         "llama-3.3-70b-versatile",   # الموديل الأساسي (الأذكى)
