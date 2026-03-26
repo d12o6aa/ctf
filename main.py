@@ -1,5 +1,8 @@
 import os
 import uvicorn
+import random  # <--- إضافة دي ضروري جداً
+import uuid    # <--- استدعاء مباشر أضمن
+from datetime import datetime, timezone # <--- استدعاء مباشر أضمن
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -9,13 +12,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from sqlalchemy.exc import IntegrityError
 
-from database import get_db, ThreatLog, CompletedLevel, datetime, timezone, uuid
+# تأكدي إن الملفات دي موجودة وفيها الحاجات دي فعلاً
+from database import get_db, ThreatLog, CompletedLevel 
 from game_logic import LEVELS_TEMPLATES, get_level_data, get_llm_response
 from config import SECRET_POOL, get_ag_client
 
 app = FastAPI(title="ArabGuard Game API")
-
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,33 +37,33 @@ class GameTurnRequest(BaseModel):
 @app.post("/api/game-turn")
 async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
     try:
-        # 1. جلب بيانات الليفل (استخدام req.level_id وليس level_id)
+        # 1. جلب بيانات الليفل
         level_template = LEVELS_TEMPLATES.get(req.level_id)
         if not level_template:
             raise HTTPException(status_code=404, detail="Level not found")
 
         # 2. اختيار السر وتجهيز البرومبت
         category = level_template.get("category", "apartment_numbers")
-        # تأمين لو الـ category مش موجودة في الـ pool
-        current_pool = SECRET_POOL.get(category, SECRET_POOL["apartment_numbers"])
+        current_pool = SECRET_POOL.get(category, SECRET_POOL.get("apartment_numbers", ["101"]))
+        
+        # اختيار سر عشوائي لهذا الدور
         target_secret = random.choice(current_pool)
         
-        # دمج السر في البرومبت
-        system_prompt = level_template["prompt_template"].format(secret=target_secret)
+        # دمج السر في البرومبت (استخدام replace أضمن من format لو فيه أقواس كتير)
+        system_prompt = level_template["prompt_template"].replace("{secret}", target_secret)
 
-        # 3. استدعاء الـ LLM (استخدام الفانكشن اللي عملناها بالـ Fallback)
+        # 3. استدعاء الـ LLM
         reply = get_llm_response(system_prompt, req.user_input)
         
         # 4. التحقق من الاختراق
-        # لو السر موجود في رد الـ AI (مش كلام المستخدم)
         is_compromised = target_secret.lower() in reply.lower()
 
-        # 5. تسجيل اللوج (تبسيط اللوج عشان ميعملش Error لو الـ ArabGuard واقع)
+        # 5. تسجيل اللوج
         new_log = ThreatLog(
             id=str(uuid.uuid4()), 
             username=req.username,
             raw_input=req.user_input, 
-            decision="SAFE", # قيمة افتراضية
+            decision="SAFE",
             score=0, 
             level_id=req.level_id,
             is_compromised=is_compromised,
@@ -88,9 +90,10 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
         }
 
     except Exception as e:
-        db.rollback()
-        print(f"Server Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="السيرفر مخدود شوية، جرب تاني!")
+        if db: db.rollback()
+        print(f"Server Error Trace: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
 @app.get("/api/levels")
 async def get_levels():
     STRENGTH_COLORS = {
@@ -109,26 +112,26 @@ async def get_levels():
             "persona":       v["persona"],
             "personaDesc":   v.get("personaDesc", ""),
             "target":        v.get("target", "السر"),
-            "blockedReplies": v.get("blockedReplies", ["مش هينفع!", "ArabGuard شايفك!", "جرب تاني 😄"]),
             "successMsg":    v.get("successMsg", "برافو! اخترقت النظام! 🎉"),
         }
         for v in LEVELS_TEMPLATES.values()
     ]
 
-
+# تم دمج دالتي الـ Progress في دالة واحدة نظيفة
 @app.get("/api/user-progress/{username}")
 async def get_user_progress(username: str, db: Session = Depends(get_db)):
-    """إرجاع الليفلز اللي خلصها اليوزر"""
-    rows = db.query(CompletedLevel.level_id).filter(
-        CompletedLevel.username == username
-    ).all()
-    completed_ids = [r.level_id for r in rows]
-    return {"username": username, "completed_levels": completed_ids}
+    try:
+        rows = db.query(CompletedLevel.level_id).filter(CompletedLevel.username == username).all()
+        return {"completed_levels": [r.level_id for r in rows]}
+    except:
+        return {"completed_levels": []}
 
+@app.get("/api/user-progress/")
+async def get_empty_progress():
+    return {"completed_levels": []}
 
 @app.get("/api/leaderboard")
 async def get_leaderboard(db: Session = Depends(get_db)):
-    """الليدربورد: اليوزر اللي خلص أكبر عدد ليفلز"""
     rows = (
         db.query(
             CompletedLevel.username,
@@ -140,45 +143,20 @@ async def get_leaderboard(db: Session = Depends(get_db)):
         .limit(10)
         .all()
     )
-
     result = []
     for r in rows:
-        tries = db.query(func.count(ThreatLog.id)).filter(
-            ThreatLog.username == r.username
-        ).scalar() or 0
         result.append({
             "username": r.username,
             "levels_completed": r.levels_completed,
-            "max_level": r.max_level,
-            "tries": tries,
+            "max_level": r.max_level
         })
     return result
-
 
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db)):
     total_attempts = db.query(func.count(ThreatLog.id)).scalar() or 0
-    # ← عدد الاختراقات الحقيقية فقط
-    successful_hacks = db.query(func.count(ThreatLog.id)).filter(
-        ThreatLog.is_compromised == True
-    ).scalar() or 0
-    return {
-        "total_attempts": total_attempts,
-        "successful_hacks": successful_hacks
-    }
-
-@app.get("/api/user-progress/{username}")
-async def get_user_progress(username: str, db: Session = Depends(get_db)):
-    try:
-        completed = db.query(CompletedLevel).filter(CompletedLevel.username == username).all()
-        return {"completed_levels": [c.level_id for c in completed]}
-    except Exception as e:
-        return {"completed_levels": []}
-
-# أضيفي المسار ده كمان عشان لو اليوزر لسه ملوش اسم
-@app.get("/api/user-progress/")
-async def get_empty_progress():
-    return {"completed_levels": []}
+    successful_hacks = db.query(func.count(ThreatLog.id)).filter(ThreatLog.is_compromised == True).scalar() or 0
+    return {"total_attempts": total_attempts, "successful_hacks": successful_hacks}
 
 @app.get("/")
 async def read_index():
@@ -188,4 +166,4 @@ async def read_index():
     return {"message": "ArabGuard API Online."}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 3001)), reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 3001)))
