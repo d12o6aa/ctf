@@ -35,102 +35,62 @@ class GameTurnRequest(BaseModel):
 @app.post("/api/game-turn")
 async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
     try:
-        # 1. جلب بيانات الليفل والسر من الـ Templates والـ Pool أولاً
+        # 1. جلب بيانات الليفل (استخدام req.level_id وليس level_id)
         level_template = LEVELS_TEMPLATES.get(req.level_id)
         if not level_template:
             raise HTTPException(status_code=404, detail="Level not found")
 
-        # اختيار السر بناءً على الـ Category
+        # 2. اختيار السر وتجهيز البرومبت
         category = level_template.get("category", "apartment_numbers")
-        if category not in SECRET_POOL:
-            category = "apartment_numbers"
+        # تأمين لو الـ category مش موجودة في الـ pool
+        current_pool = SECRET_POOL.get(category, SECRET_POOL["apartment_numbers"])
+        target_secret = random.choice(current_pool)
         
-        # اختيار سر عشوائي لهذا الدور
-        target_secret = random.choice(SECRET_POOL[category])
-        
-        # تجهيز الـ System Prompt بالسر المختار
+        # دمج السر في البرومبت
         system_prompt = level_template["prompt_template"].format(secret=target_secret)
 
-        # 2. استدعاء ArabGuard للتحقق من الاختراق (Security Check)
-        ag = get_ag_client()
-        if not ag:
-            # لو الموديل الأمني واقع، ممكن نعديها أو نوقف، الأفضل نعديها بـ SAFE مؤقتاً
-            trace, final_decision = {"final_score": 0}, "SAFE"
-        else:
-            result = ag.predict(
-                user_input=req.user_input,
-                system_prompt=system_prompt,
-                api_name="/universal_api"
-            )
-            trace, status_label = result[1], result[2]
-            final_decision = status_label.get("label", "SAFE") if isinstance(status_label, dict) else str(status_label)
-
-        # 3. لو الطلب محظور (BLOCKED)
-        if final_decision in ("BLOCKED", "FLAG"):
-            new_log = ThreatLog(
-                id=str(uuid.uuid4()), username=req.username,
-                raw_input=req.user_input, decision=final_decision,
-                score=trace.get("final_score", 0), level_id=req.level_id,
-                is_compromised=False, trace=trace,
-                timestamp=datetime.now(timezone.utc)
-            )
-            db.add(new_log)
-            db.commit()
-            return {"blocked": True, "reply": "ArabGuard اكتشف محاولة مريبة! العب غيرها.", "trace": trace, "final_decision": final_decision}
-
-        # 4. الحصول على رد الـ LLM (عم محمد، نهى، إلخ) باستخدام الفانكشن اللي فيها Fallback
+        # 3. استدعاء الـ LLM (استخدام الفانكشن اللي عملناها بالـ Fallback)
         reply = get_llm_response(system_prompt, req.user_input)
-
-        # 5. التحقق هل المستخدم قدر يخلي الـ AI يقول السر؟
-        # بنتحقق لو السر موجود في رد الـ AI
+        
+        # 4. التحقق من الاختراق
+        # لو السر موجود في رد الـ AI (مش كلام المستخدم)
         is_compromised = target_secret.lower() in reply.lower()
 
-        # 6. تسجيل اللوج في قاعدة البيانات
+        # 5. تسجيل اللوج (تبسيط اللوج عشان ميعملش Error لو الـ ArabGuard واقع)
         new_log = ThreatLog(
-            id=str(uuid.uuid4()), username=req.username,
-            raw_input=req.user_input, decision=final_decision,
-            score=trace.get("final_score", 0), level_id=req.level_id,
-            is_compromised=is_compromised, trace=trace,
+            id=str(uuid.uuid4()), 
+            username=req.username,
+            raw_input=req.user_input, 
+            decision="SAFE", # قيمة افتراضية
+            score=0, 
+            level_id=req.level_id,
+            is_compromised=is_compromised,
             timestamp=datetime.now(timezone.utc)
         )
         db.add(new_log)
 
-        # 7. لو نجح في الاختراق، سجل الليفل كمكتمل
+        # 6. تحديث التقدم لو فاز
         if is_compromised:
-            try:
-                # نتحقق الأول لو مسجل قبل كدة عشان ميرميش IntegrityError
-                already_done = db.query(CompletedLevel).filter(
-                    CompletedLevel.username == req.username, 
-                    CompletedLevel.level_id == req.level_id
-                ).first()
-                
-                if not already_done:
-                    completed = CompletedLevel(
-                        username=req.username,
-                        level_id=req.level_id,
-                        completed_at=datetime.now(timezone.utc)
-                    )
-                    db.add(completed)
-            except Exception as e:
-                print(f"Update progress error: {e}")
-                db.rollback()
+            already_done = db.query(CompletedLevel).filter(
+                CompletedLevel.username == req.username, 
+                CompletedLevel.level_id == req.level_id
+            ).first()
+            if not already_done:
+                db.add(CompletedLevel(username=req.username, level_id=req.level_id))
 
         db.commit()
 
         return {
             "blocked": False,
             "reply": reply,
-            "trace": trace,
-            "final_decision": final_decision,
             "is_compromised": is_compromised,
             "secret_revealed": target_secret if is_compromised else None
         }
 
     except Exception as e:
         db.rollback()
-        print(f"Critical Error in game_turn: {e}")
-        raise HTTPException(status_code=500, detail="حصل مشكلة في السيرفر، جرب تاني يا بطل!")
-
+        print(f"Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="السيرفر مخدود شوية، جرب تاني!")
 @app.get("/api/levels")
 async def get_levels():
     STRENGTH_COLORS = {
@@ -208,14 +168,17 @@ async def get_stats(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/user-progress/{username}")
-@app.get("/api/user-progress/") 
-async def get_user_progress(username: str = "Anonymous", db: Session = Depends(get_db)):
+async def get_user_progress(username: str, db: Session = Depends(get_db)):
     try:
-        completed = db.query(CompletedLevel.level_id).filter(CompletedLevel.username == username).all()
+        completed = db.query(CompletedLevel).filter(CompletedLevel.username == username).all()
         return {"completed_levels": [c.level_id for c in completed]}
     except Exception as e:
-        print(f"Error fetching progress: {e}")
         return {"completed_levels": []}
+
+# أضيفي المسار ده كمان عشان لو اليوزر لسه ملوش اسم
+@app.get("/api/user-progress/")
+async def get_empty_progress():
+    return {"completed_levels": []}
 
 @app.get("/")
 async def read_index():

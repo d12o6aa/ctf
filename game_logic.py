@@ -138,10 +138,27 @@ LEVELS_TEMPLATES = {
 
 def get_level_data(level_id):
     template = LEVELS_TEMPLATES.get(level_id)
-    if not template: return None
-    secret = random.choice(SECRET_POOL[template["category"]])
+    if not template: 
+        return None
+    
+    # 1. التأكد من وجود الكاتيجوري في الـ Pool
+    category = template.get("category", "apartment_numbers")
+    if category not in SECRET_POOL:
+        # لو مش موجودة، نستخدم كاتيجوري احتياطية عشان السيرفر ميقعش
+        category = "apartment_numbers"
+        
+    # 2. اختيار السر
+    secret = random.choice(SECRET_POOL[category])
+    
+    # 3. دمج السر في البرومبت (بأمان)
+    try:
+        system_prompt = template["prompt_template"].format(secret=secret)
+    except KeyError:
+        # لو نسينا نكتب {secret} جوه البرومبت
+        system_prompt = template["prompt_template"]
+
     return {
-        "system_prompt": template["prompt_template"].format(secret=secret),
+        "system_prompt": system_prompt,
         "target_secret": secret,
         "metadata": template
     }
