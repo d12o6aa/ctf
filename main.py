@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import get_db, ThreatLog, CompletedLevel, datetime, timezone, uuid
 from game_logic import LEVELS_TEMPLATES, get_level_data, get_llm_response
-from config import get_ag_client
+from config import SECRET_POOL, get_ag_client
 
 app = FastAPI(title="ArabGuard Game API")
 
@@ -35,23 +35,37 @@ class GameTurnRequest(BaseModel):
 @app.post("/api/game-turn")
 async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
     try:
-        level_info = get_level_data(req.level_id)
-        if not level_info:
+        # 1. جلب بيانات الليفل والسر من الـ Templates والـ Pool أولاً
+        level_template = LEVELS_TEMPLATES.get(req.level_id)
+        if not level_template:
             raise HTTPException(status_code=404, detail="Level not found")
 
+        # اختيار السر بناءً على الـ Category
+        category = level_template.get("category", "apartment_numbers")
+        if category not in SECRET_POOL:
+            category = "apartment_numbers"
+        
+        # اختيار سر عشوائي لهذا الدور
+        target_secret = random.choice(SECRET_POOL[category])
+        
+        # تجهيز الـ System Prompt بالسر المختار
+        system_prompt = level_template["prompt_template"].format(secret=target_secret)
+
+        # 2. استدعاء ArabGuard للتحقق من الاختراق (Security Check)
         ag = get_ag_client()
         if not ag:
-            raise HTTPException(status_code=503, detail="ArabGuard Model Offline")
+            # لو الموديل الأمني واقع، ممكن نعديها أو نوقف، الأفضل نعديها بـ SAFE مؤقتاً
+            trace, final_decision = {"final_score": 0}, "SAFE"
+        else:
+            result = ag.predict(
+                user_input=req.user_input,
+                system_prompt=system_prompt,
+                api_name="/universal_api"
+            )
+            trace, status_label = result[1], result[2]
+            final_decision = status_label.get("label", "SAFE") if isinstance(status_label, dict) else str(status_label)
 
-        result = ag.predict(
-            user_input=req.user_input,
-            system_prompt=level_info["system_prompt"],
-            api_name="/universal_api"
-        )
-
-        ag_chat_response, trace, status_label = result[0], result[1], result[2]
-        final_decision = status_label.get("label", "SAFE") if isinstance(status_label, dict) else str(status_label)
-
+        # 3. لو الطلب محظور (BLOCKED)
         if final_decision in ("BLOCKED", "FLAG"):
             new_log = ThreatLog(
                 id=str(uuid.uuid4()), username=req.username,
@@ -62,13 +76,16 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
             )
             db.add(new_log)
             db.commit()
-            return {"blocked": True, "reply": None, "trace": trace, "final_decision": final_decision}
+            return {"blocked": True, "reply": "ArabGuard اكتشف محاولة مريبة! العب غيرها.", "trace": trace, "final_decision": final_decision}
 
-        reply = get_llm_response(level_info["system_prompt"], req.user_input)
+        # 4. الحصول على رد الـ LLM (عم محمد، نهى، إلخ) باستخدام الفانكشن اللي فيها Fallback
+        reply = get_llm_response(system_prompt, req.user_input)
 
-        secret = level_info["target_secret"]
-        is_compromised = secret.lower() in req.user_input.lower() or secret.lower() in reply.lower()
+        # 5. التحقق هل المستخدم قدر يخلي الـ AI يقول السر؟
+        # بنتحقق لو السر موجود في رد الـ AI
+        is_compromised = target_secret.lower() in reply.lower()
 
+        # 6. تسجيل اللوج في قاعدة البيانات
         new_log = ThreatLog(
             id=str(uuid.uuid4()), username=req.username,
             raw_input=req.user_input, decision=final_decision,
@@ -78,17 +95,25 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
         )
         db.add(new_log)
 
-        # ── سجّل الليفل كمكتمل لو نجح ──
+        # 7. لو نجح في الاختراق، سجل الليفل كمكتمل
         if is_compromised:
             try:
-                completed = CompletedLevel(
-                    username=req.username,
-                    level_id=req.level_id,
-                    completed_at=datetime.now(timezone.utc)
-                )
-                db.add(completed)
-            except IntegrityError:
-                db.rollback()  # already completed before
+                # نتحقق الأول لو مسجل قبل كدة عشان ميرميش IntegrityError
+                already_done = db.query(CompletedLevel).filter(
+                    CompletedLevel.username == req.username, 
+                    CompletedLevel.level_id == req.level_id
+                ).first()
+                
+                if not already_done:
+                    completed = CompletedLevel(
+                        username=req.username,
+                        level_id=req.level_id,
+                        completed_at=datetime.now(timezone.utc)
+                    )
+                    db.add(completed)
+            except Exception as e:
+                print(f"Update progress error: {e}")
+                db.rollback()
 
         db.commit()
 
@@ -98,12 +123,13 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
             "trace": trace,
             "final_decision": final_decision,
             "is_compromised": is_compromised,
-            "secret_revealed": secret if is_compromised else None
+            "secret_revealed": target_secret if is_compromised else None
         }
-    except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
+    except Exception as e:
+        db.rollback()
+        print(f"Critical Error in game_turn: {e}")
+        raise HTTPException(status_code=500, detail="حصل مشكلة في السيرفر، جرب تاني يا بطل!")
 
 @app.get("/api/levels")
 async def get_levels():
