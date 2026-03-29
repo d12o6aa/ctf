@@ -213,9 +213,9 @@ def get_llm_response(system_prompt, user_input):
                     {"role": "user", "content": user_input},
                 ],
                 max_tokens=100,         # ردود قصيرة لتقليل استهلاك التوكنز والهلوسة
-                temperature=0.6,        # متوازن بين الإبداع والمنطق
+                temperature=0.8,        # متوازن بين الإبداع والمنطق
                 top_p=0.9,
-                frequency_penalty=1.0,  # لمنع التكرار (علاج الهلوسة)
+                frequency_penalty=0.6,  # لمنع التكرار (علاج الهلوسة)
                 presence_penalty=0.5    # لمنع الدوران في دوائر مغلقة
             )
             return completion.choices[0].message.content
