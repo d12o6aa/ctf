@@ -46,32 +46,77 @@ async def game_turn(req: GameTurnRequest, db: Session = Depends(get_db)):
         category = level_template.get("category", "apartment_numbers")
         current_pool = SECRET_POOL.get(category, SECRET_POOL.get("apartment_numbers", ["101"]))
         
-        # اختيار سر عشوائي لهذا الدور
         target_secret = random.choice(current_pool)
-        
-        # دمج السر في البرومبت (استخدام replace أضمن من format لو فيه أقواس كتير)
         system_prompt = level_template["prompt_template"].replace("{secret}", target_secret)
 
-        # 3. استدعاء الـ LLM
+        # 3. --- دمج حماية ArabGuard ---
+        ag_client = get_ag_client()
+        final_decision = "SAFE"
+        trace = {}
+        blocked = False
+
+        if ag_client:
+            try:
+                # إرسال الطلب للتحليل
+                result = ag_client.predict(
+                    user_input=req.user_input,
+                    system_prompt=system_prompt,
+                    api_name="/universal_api"
+                )
+                ag_chat_response, trace, status_label = result[0], result[1], result[2]
+                final_decision = status_label.get("label", "SAFE") if isinstance(status_label, dict) else str(status_label)
+                blocked = final_decision in ("BLOCKED", "FLAG")
+            except Exception as e:
+                print(f"ArabGuard Warning: {e}")
+                # في حالة تعطل الـ API، يمكن السماح بالمرور (Fail Open) أو حظره حسب رغبتك.
+        else:
+            print("ArabGuard client is not initialized in config.")
+
+        # 4. المعالجة في حالة الحظر (Prompt Injection / Malicious Intent)
+        if blocked:
+            new_log = ThreatLog(
+                id=str(uuid.uuid4()), 
+                username=req.username,
+                raw_input=req.user_input, 
+                decision=final_decision,
+                score=trace.get("final_score", 0), 
+                level_id=req.level_id,
+                is_compromised=False,
+                trace=trace, 
+                timestamp=datetime.now(timezone.utc)
+            )
+            db.add(new_log)
+            db.commit()
+            
+            return {
+                "blocked": True,
+                "reply": "ArabGuard: Error 403 - Invalid syntax or unauthorized attempt.", # رسالة حظر تناسب جو التحدي
+                "is_compromised": False,
+                "secret_revealed": None,
+                "trace": trace
+            }
+
+        # 5. استدعاء الـ LLM إذا كان الطلب آمناً (SAFE)
         reply = get_llm_response(system_prompt, req.user_input)
         
-        # 4. التحقق من الاختراق
+        # 6. التحقق الدقيق من الاختراق (هل النموذج هو من قام بتسريب السر؟)
         is_compromised = target_secret.lower() in reply.lower()
 
-        # 5. تسجيل اللوج
+        # 7. تسجيل اللوج النهائي (محاولة آمنة)
         new_log = ThreatLog(
             id=str(uuid.uuid4()), 
             username=req.username,
             raw_input=req.user_input, 
-            decision="SAFE",
-            score=0, 
+            decision=final_decision,
+            score=trace.get("final_score", 0), 
             level_id=req.level_id,
             is_compromised=is_compromised,
+            trace=trace,
             timestamp=datetime.now(timezone.utc)
         )
         db.add(new_log)
 
-        # 6. تحديث التقدم لو فاز
+        # 8. تحديث التقدم لو نجح في استخراج السر
         if is_compromised:
             already_done = db.query(CompletedLevel).filter(
                 CompletedLevel.username == req.username, 
